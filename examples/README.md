@@ -56,7 +56,7 @@ See [jwt-auth/README.md](jwt-auth/README.md) for details.
 | **Multi-tenancy** | No | Yes |
 | **Account isolation** | No | Yes |
 | **Resource limits** | No | Yes (per account) |
-| **Subject permissions** | Yes | Yes |
+| **Subject permissions** | Stored only (not enforced by server) | Yes |
 | **JetStream streams** | Global | Per account |
 | **Credential rotation** | Manual | Supported |
 | **Best for** | Dev/test, simple apps | Production, multi-tenant |

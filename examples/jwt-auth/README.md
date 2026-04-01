@@ -304,7 +304,7 @@ limits:
 Create a new user in the production account:
 
 ```yaml
-apiVersion: nats.example.com/v1alpha1
+apiVersion: nats.jradikk/v1alpha1
 kind: NatsUser
 metadata:
   name: notification-service

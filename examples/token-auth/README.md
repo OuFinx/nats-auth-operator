@@ -214,7 +214,7 @@ env:
 To add or change permissions, edit the NatsUser resource:
 
 ```yaml
-apiVersion: nats.example.com/v1alpha1
+apiVersion: nats.jradikk/v1alpha1
 kind: NatsUser
 metadata:
   name: publisher
@@ -233,7 +233,7 @@ Apply the changes:
 kubectl apply -f 02-users.yaml
 ```
 
-The operator will automatically update the auth configuration.
+> **Note:** In token mode, permissions are stored in the user's Secret but are **not** currently propagated to the NATS server's `auth.conf`. Token-mode permission enforcement is a known limitation. For permission-enforced access control, use JWT mode.
 
 ## Adding New Users
 
@@ -241,7 +241,7 @@ Create a new user by adding to `02-users.yaml`:
 
 ```yaml
 ---
-apiVersion: nats.example.com/v1alpha1
+apiVersion: nats.jradikk/v1alpha1
 kind: NatsUser
 metadata:
   name: my-new-user

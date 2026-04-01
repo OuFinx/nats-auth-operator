@@ -20,6 +20,8 @@ A Kubernetes operator for managing NATS authentication using JWT and token-based
 - 🔄 **Seamless NATS Helm integration** - Works alongside official NATS Helm chart without conflicts
 - 📦 **Kubernetes-native** - Manage authentication using `kubectl` and GitOps workflows
 - 🛡️ **Production-ready** - Idempotent reconciliation, finalizers, status conditions, secure secret storage
+- ⚡ **Automatic change propagation** - Spec changes (permissions, limits) are detected and re-applied on the next reconcile
+- 🔁 **Force-sync annotation** - Trigger an immediate reconcile on any resource without waiting
 
 ## Quick Start
 
@@ -276,6 +278,23 @@ subscribeAllow:
   - "_INBOX.>"
 ```
 
+## Force-Sync
+
+Annotate any resource with `nats.jradikk/force-sync` to trigger an immediate full reconcile, bypassing the idempotency guards. The annotation is removed automatically after processing.
+
+```bash
+# Force re-generate a user JWT (e.g., after manually editing permissions)
+kubectl annotate NatsUser my-user nats.jradikk/force-sync=$(date +%s) --overwrite
+
+# Force re-generate an account JWT (e.g., after changing limits)
+kubectl annotate NatsAccount my-account nats.jradikk/force-sync=$(date +%s) --overwrite
+
+# Force NatsAuthConfig to re-collect and re-publish all account JWTs
+kubectl annotate NatsAuthConfig my-config nats.jradikk/force-sync=$(date +%s) --overwrite
+```
+
+> Under normal operation this is not needed — spec changes are detected automatically via the resource `generation`. Use force-sync when you have edited secrets manually or need to verify the operator is in sync.
+
 ## Troubleshooting
 
 ### Account IDs Keep Changing
@@ -344,11 +363,11 @@ Even with all values set to `-1` (unlimited), the presence of the `jetstream` se
    kubectl get secret <account-name>-account-jwt
    ```
 
-3. Trigger reconciliation by deleting the main Secret:
+3. Trigger reconciliation with the force-sync annotation:
    ```bash
-   kubectl delete secret nats-auth-jwts
+   kubectl annotate natsauthconfig main nats.jradikk/force-sync=$(date +%s) --overwrite
    ```
-   The operator will recreate it with all account JWTs.
+   The operator will re-collect all account JWTs and rewrite the Secret.
 
 ### Account ID Mismatch Between JWT and Status
 
@@ -365,9 +384,9 @@ The operator will regenerate the JWT using the existing seed.
 
 **Problem:** User credentials change on every reconciliation.
 
-**Cause:** Same as account ID issue - status doesn't match secret.
+**Cause:** `status.observedGeneration` is out of sync with the actual resource generation, causing the controller to treat every reconcile as a spec change.
 
-**Solution:** Upgrade to latest operator version with the fix.
+**Solution:** Check whether the status is being updated correctly. If the problem persists, delete and recreate the user resource to reset the generation counter.
 
 ### NATS Server Shows "authentication error"
 
