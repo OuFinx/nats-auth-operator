@@ -38,6 +38,11 @@ import (
 
 const (
 	natsAuthConfigFinalizer = "nats.jradikk/authconfig-finalizer"
+
+	// ForceSyncAnnotation can be applied to any CRD to force an immediate full reconcile,
+	// bypassing idempotency guards. The controller removes the annotation after processing.
+	// Usage: kubectl annotate NatsAccount my-acc nats.jradikk/force-sync=$(date +%s) --overwrite
+	ForceSyncAnnotation = "nats.jradikk/force-sync"
 )
 
 // NatsAuthConfigReconciler reconciles a NatsAuthConfig object
@@ -75,6 +80,16 @@ func (r *NatsAuthConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if err := r.Update(ctx, authConfig); err != nil {
 			return ctrl.Result{}, err
 		}
+	}
+
+	// Handle force-sync annotation
+	if _, ok := authConfig.Annotations[ForceSyncAnnotation]; ok {
+		patch := client.MergeFrom(authConfig.DeepCopy())
+		delete(authConfig.Annotations, ForceSyncAnnotation)
+		if err := r.Patch(ctx, authConfig, patch); err != nil {
+			return ctrl.Result{}, err
+		}
+		log.Info("Force-sync annotation detected, running full reconcile")
 	}
 
 	// Validate the spec

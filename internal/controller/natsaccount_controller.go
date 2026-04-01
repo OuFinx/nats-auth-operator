@@ -108,8 +108,20 @@ func (r *NatsAccountReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{RequeueAfter: time.Minute}, err
 	}
 
+	// Determine if a full re-reconcile is needed (spec changed or force-sync requested)
+	forceSync := account.Generation != account.Status.ObservedGeneration
+	if _, ok := account.Annotations[ForceSyncAnnotation]; ok {
+		patch := client.MergeFrom(account.DeepCopy())
+		delete(account.Annotations, ForceSyncAnnotation)
+		if err := r.Patch(ctx, account, patch); err != nil {
+			return ctrl.Result{}, err
+		}
+		log.Info("Force-sync annotation detected, running full reconcile")
+		forceSync = true
+	}
+
 	// Reconcile the account
-	if err := r.reconcileAccount(ctx, account, authConfig); err != nil {
+	if err := r.reconcileAccount(ctx, account, authConfig, forceSync); err != nil {
 		log.Error(err, "Failed to reconcile account")
 		r.updateCondition(account, metav1.Condition{
 			Type:    "Ready",
@@ -144,7 +156,7 @@ func (r *NatsAccountReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-func (r *NatsAccountReconciler) reconcileAccount(ctx context.Context, account *natsv1alpha1.NatsAccount, authConfig *natsv1alpha1.NatsAuthConfig) error {
+func (r *NatsAccountReconciler) reconcileAccount(ctx context.Context, account *natsv1alpha1.NatsAccount, authConfig *natsv1alpha1.NatsAuthConfig, forceSync bool) error {
 	log := log.FromContext(ctx)
 
 	// Check if JWT secret already exists
@@ -154,21 +166,24 @@ func (r *NatsAccountReconciler) reconcileAccount(ctx context.Context, account *n
 	err := r.Get(ctx, client.ObjectKey{Namespace: account.Namespace, Name: jwtSecretName}, existingSecret)
 	if err == nil {
 		jwtSecretExists = true
-		// JWT already exists - verify it matches the status before skipping
-		if account.Status.AccountID != "" && len(existingSecret.Data["account.jwt"]) > 0 && len(existingSecret.Data["account.seed"]) > 0 {
+		// JWT already exists - only skip regeneration if spec has not changed and no force-sync
+		if !forceSync && account.Status.AccountID != "" && len(existingSecret.Data["account.jwt"]) > 0 && len(existingSecret.Data["account.seed"]) > 0 {
 			// Verify the seed in the secret generates the same account ID as in status
 			seedData := existingSecret.Data["account.seed"]
 			kp, err := nkeys.FromSeed(seedData)
 			if err == nil {
 				pubKey, err := kp.PublicKey()
 				if err == nil && pubKey == account.Status.AccountID {
-					// JWT exists, status matches seed - no need to regenerate
-					log.Info("Account JWT already exists and matches status, skipping regeneration", "accountID", account.Status.AccountID)
+					// JWT exists, status matches seed, spec unchanged - skip
+					log.Info("Account JWT up-to-date, skipping regeneration", "accountID", account.Status.AccountID)
 					return nil
 				}
 			}
-			// If we get here, the status doesn't match the seed - need to regenerate
+			// Status doesn't match seed - need to regenerate
 			log.Info("Account ID in status doesn't match seed, will regenerate", "statusID", account.Status.AccountID)
+		}
+		if forceSync {
+			log.Info("Force-sync active, regenerating account JWT", "accountID", account.Status.AccountID)
 		}
 	} else if !errors.IsNotFound(err) {
 		return fmt.Errorf("failed to check JWT secret: %w", err)
