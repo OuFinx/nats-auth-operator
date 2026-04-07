@@ -339,9 +339,9 @@ func (r *NatsUserReconciler) reconcileTokenUser(ctx context.Context, user *natsv
 			Namespace: user.Namespace,
 		},
 		StringData: map[string]string{
-			"USERNAME":  username,
-			"PASSWORD":  password,
-			"NATS_URL":  authConfig.Spec.NatsURL,
+			"USERNAME": username,
+			"PASSWORD": password,
+			"NATS_URL": authConfig.Spec.NatsURL,
 		},
 	}
 

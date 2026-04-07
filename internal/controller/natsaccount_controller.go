@@ -189,10 +189,17 @@ func (r *NatsAccountReconciler) reconcileAccount(ctx context.Context, account *n
 		return fmt.Errorf("failed to check JWT secret: %w", err)
 	}
 
-	// Get or create account seed
-	accountSeed, err := r.getOrCreateAccountSeed(ctx, account)
-	if err != nil {
-		return fmt.Errorf("failed to get account seed: %w", err)
+	// Reuse existing seed if available — changing the seed changes the account public key,
+	// which orphans all JetStream data and invalidates all user JWTs for this account.
+	// Only generate a new seed if no secret exists yet.
+	var accountSeed []byte
+	if jwtSecretExists && len(existingSecret.Data["account.seed"]) > 0 {
+		accountSeed = existingSecret.Data["account.seed"]
+	} else {
+		accountSeed, err = r.getOrCreateAccountSeed(ctx, account)
+		if err != nil {
+			return fmt.Errorf("failed to get account seed: %w", err)
+		}
 	}
 
 	// Create account manager
@@ -368,22 +375,28 @@ func (r *NatsAccountReconciler) getOperatorSeed(ctx context.Context, authConfig 
 	return seed, nil
 }
 
-// triggerAuthConfigReconcile forces a reconciliation of the NatsAuthConfig
-// This is needed when accounts are created/updated/deleted to refresh resolver_preload
+// triggerAuthConfigReconcile forces a reconciliation of the NatsAuthConfig by
+// patching a single annotation. It re-fetches the object first to avoid
+// resourceVersion conflicts with concurrent NatsAuthConfig reconciles.
 func (r *NatsAccountReconciler) triggerAuthConfigReconcile(ctx context.Context, authConfig *natsv1alpha1.NatsAuthConfig) error {
 	log := log.FromContext(ctx)
 
-	// Update a dummy annotation to trigger reconciliation
-	if authConfig.Annotations == nil {
-		authConfig.Annotations = make(map[string]string)
+	latest := &natsv1alpha1.NatsAuthConfig{}
+	if err := r.Get(ctx, client.ObjectKeyFromObject(authConfig), latest); err != nil {
+		return fmt.Errorf("failed to get latest auth config: %w", err)
 	}
-	authConfig.Annotations["nats.jradikk/last-account-update"] = time.Now().Format(time.RFC3339)
 
-	if err := r.Update(ctx, authConfig); err != nil {
+	base := latest.DeepCopy()
+	if latest.Annotations == nil {
+		latest.Annotations = make(map[string]string)
+	}
+	latest.Annotations["nats.jradikk/last-account-update"] = time.Now().Format(time.RFC3339)
+
+	if err := r.Patch(ctx, latest, client.MergeFrom(base)); err != nil {
 		return fmt.Errorf("failed to trigger auth config reconciliation: %w", err)
 	}
 
-	log.Info("Triggered NatsAuthConfig reconciliation", "authConfig", authConfig.Name)
+	log.Info("Triggered NatsAuthConfig reconciliation", "authConfig", latest.Name)
 	return nil
 }
 
