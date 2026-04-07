@@ -412,7 +412,7 @@ kubectl get secret <user>-user-creds -o jsonpath='{.data.user\.jwt}' | base64 -d
 
 ### Prerequisites
 
-- Go 1.22+
+- Go 1.24+
 - Kubernetes cluster (kind, minikube, or real cluster)
 - kubectl
 - Docker or Podman
