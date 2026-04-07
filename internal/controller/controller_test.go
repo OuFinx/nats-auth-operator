@@ -116,6 +116,58 @@ func uniqueName(prefix string) string {
 	return fmt.Sprintf("%s-%d", prefix, testCounter)
 }
 
+var _ = Describe("Existing system account is reused when systemAccountName is set", func() {
+	It("adopts the pre-existing NatsAccount and does not recreate it", func() {
+		acName := uniqueName("reuse-sys-ac")
+		existingAccName := uniqueName("existing-sys-acc")
+
+		// Pre-create the system account manually (simulating a pre-upgrade state)
+		existingAcc := makeAccount(existingAccName, acName)
+		existingAcc.Spec.Description = "manually created system account"
+
+		// Create the authconfig pointing at the existing account name
+		ac := makeAuthConfig(acName)
+		ac.Spec.JWT.SystemAccountName = existingAccName
+
+		Expect(k8sClient.Create(ctx, ac)).To(Succeed())
+		Expect(k8sClient.Create(ctx, existingAcc)).To(Succeed())
+
+		accKey := types.NamespacedName{Name: existingAccName, Namespace: "default"}
+
+		DeferCleanup(func() {
+			// Delete authconfig first so the account finalizer can complete
+			deleteAndWait(ac, types.NamespacedName{Name: acName, Namespace: "default"})
+			deleteAndWait(existingAcc, accKey)
+		})
+
+		// Wait for the account to be reconciled and get a public key
+		waitAccountReady(accKey)
+
+		// The auto-named account must NOT be created
+		autoAcc := &natsv1alpha1.NatsAccount{}
+		Consistently(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{Name: acName + "-system-account", Namespace: "default"}, autoAcc)
+		}, 5*time.Second, interval).Should(MatchError(ContainSubstring("not found")))
+
+		// The existing account must not have been replaced — description unchanged
+		acc := &natsv1alpha1.NatsAccount{}
+		Expect(k8sClient.Get(ctx, accKey, acc)).To(Succeed())
+		Expect(acc.Spec.Description).To(Equal("manually created system account"))
+
+		// The operator JWT secret must have been written with SystemAccountPubKey set
+		Eventually(func(g Gomega) {
+			ac := &natsv1alpha1.NatsAuthConfig{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: acName, Namespace: "default"}, ac)).To(Succeed())
+			g.Expect(ac.Status.SystemAccountPubKey).NotTo(BeEmpty())
+
+			// Must match the existing account's public key
+			a := &natsv1alpha1.NatsAccount{}
+			g.Expect(k8sClient.Get(ctx, accKey, a)).To(Succeed())
+			g.Expect(ac.Status.SystemAccountPubKey).To(Equal(a.Status.AccountID))
+		}, timeout, interval).Should(Succeed())
+	})
+})
+
 var _ = Describe("System account auto-created by NatsAuthConfig", func() {
 	It("creates a NatsAccount named <authconfig>-system-account", func() {
 		acName := uniqueName("sys-ac")
