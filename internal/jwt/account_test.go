@@ -1,6 +1,7 @@
 package jwt
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/nats-io/jwt/v2"
@@ -205,6 +206,89 @@ func TestUserJWTIssuerMatchesAccount(t *testing.T) {
 	}
 	if decoded.Issuer != accountPubKey {
 		t.Errorf("Issuer: got %q, want %q", decoded.Issuer, accountPubKey)
+	}
+}
+
+// GenerateCredsFile must produce output the NATS client SDK can parse:
+// two PEM-like blocks in order (JWT then seed), with the exact headers the SDK expects.
+func TestGenerateCredsFileFormat(t *testing.T) {
+	um, _ := NewUserManager(nil)
+	am, _ := NewAccountManager(nil)
+	claims, _ := um.CreateUserClaims("u", nil)
+	userJWT, _ := am.SignUserJWT(claims)
+	seed, _ := um.GetSeed()
+
+	creds := GenerateCredsFile(userJWT, seed)
+
+	// NATS client SDK looks for these exact delimiters
+	requiredStrings := []string{
+		"-----BEGIN NATS USER JWT-----",
+		"------END NATS USER JWT------",
+		"-----BEGIN USER NKEY SEED-----",
+		"------END USER NKEY SEED------",
+		userJWT,
+		string(seed),
+	}
+	for _, s := range requiredStrings {
+		if !strings.Contains(creds, s) {
+			t.Errorf("creds file missing expected string %q", s)
+		}
+	}
+
+	// JWT block must come before seed block
+	jwtPos := strings.Index(creds, "-----BEGIN NATS USER JWT-----")
+	seedPos := strings.Index(creds, "-----BEGIN USER NKEY SEED-----")
+	if jwtPos >= seedPos {
+		t.Error("JWT block must appear before seed block in creds file")
+	}
+}
+
+// SignUserJWT round-trip: decoded JWT must have correct Subject (user pubkey),
+// Issuer (account pubkey), and permissions intact.
+func TestSignUserJWTRoundTrip(t *testing.T) {
+	am, _ := NewAccountManager(nil)
+	accountPubKey, _ := am.GetPublicKey()
+
+	um, _ := NewUserManager(nil)
+	userPubKey, _ := um.GetPublicKey()
+
+	perms := &natsv1alpha1.Permissions{
+		PublishAllow:   []string{"app.>", "$JS.ACK.>"},
+		PublishDeny:    []string{"denied.>"},
+		SubscribeAllow: []string{"app.>", "_INBOX.>"},
+		SubscribeDeny:  []string{"$SYS.>"},
+	}
+	claims, _ := um.CreateUserClaims("myuser", perms)
+	signed, err := am.SignUserJWT(claims)
+	if err != nil {
+		t.Fatalf("SignUserJWT() error = %v", err)
+	}
+
+	decoded, err := jwt.DecodeUserClaims(signed)
+	if err != nil {
+		t.Fatalf("DecodeUserClaims() error = %v", err)
+	}
+
+	if decoded.Subject != userPubKey {
+		t.Errorf("Subject: got %q, want %q", decoded.Subject, userPubKey)
+	}
+	if decoded.Issuer != accountPubKey {
+		t.Errorf("Issuer: got %q, want %q", decoded.Issuer, accountPubKey)
+	}
+	if decoded.Name != "myuser" {
+		t.Errorf("Name: got %q, want %q", decoded.Name, "myuser")
+	}
+	if !containsAll(decoded.Pub.Allow, "app.>", "$JS.ACK.>") {
+		t.Errorf("Pub.Allow: got %v", decoded.Pub.Allow)
+	}
+	if !containsAll(decoded.Pub.Deny, "denied.>") {
+		t.Errorf("Pub.Deny: got %v", decoded.Pub.Deny)
+	}
+	if !containsAll(decoded.Sub.Allow, "app.>", "_INBOX.>") {
+		t.Errorf("Sub.Allow: got %v", decoded.Sub.Allow)
+	}
+	if !containsAll(decoded.Sub.Deny, "$SYS.>") {
+		t.Errorf("Sub.Deny: got %v", decoded.Sub.Deny)
 	}
 }
 
