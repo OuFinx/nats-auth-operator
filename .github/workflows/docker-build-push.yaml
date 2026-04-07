@@ -63,7 +63,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Generate artifact attestation
-        if: github.repository == 'jradikk/nats-auth-operator'
+        if: github.event_name != 'pull_request' && github.repository == 'jradikk/nats-auth-operator'
         continue-on-error: true
         uses: actions/attest-build-provenance@v1
         with:
