@@ -125,23 +125,24 @@ var _ = Describe("Existing system account is reused when systemAccountName is se
 		existingAcc := makeAccount(existingAccName, acName)
 		existingAcc.Spec.Description = "manually created system account"
 
+		Expect(k8sClient.Create(ctx, existingAcc)).To(Succeed())
+
+		accKey := types.NamespacedName{Name: existingAccName, Namespace: "default"}
+
+		// Wait for the account to be reconciled and get a public key
+		waitAccountReady(accKey)
+
 		// Create the authconfig pointing at the existing account name
 		ac := makeAuthConfig(acName)
 		ac.Spec.JWT.SystemAccountName = existingAccName
 
 		Expect(k8sClient.Create(ctx, ac)).To(Succeed())
-		Expect(k8sClient.Create(ctx, existingAcc)).To(Succeed())
-
-		accKey := types.NamespacedName{Name: existingAccName, Namespace: "default"}
 
 		DeferCleanup(func() {
 			// Delete authconfig first so the account finalizer can complete
 			deleteAndWait(ac, types.NamespacedName{Name: acName, Namespace: "default"})
 			deleteAndWait(existingAcc, accKey)
 		})
-
-		// Wait for the account to be reconciled and get a public key
-		waitAccountReady(accKey)
 
 		// The auto-named account must NOT be created
 		autoAcc := &natsv1alpha1.NatsAccount{}
