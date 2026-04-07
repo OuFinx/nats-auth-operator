@@ -11,7 +11,7 @@ config:
       pvc:
         enabled: true
         size: 3Gi
-        # storageClassName: longhorn
+        # storageClassName: <your-storage-class>
     memoryStore:
       enabled: true
       maxSize: 1Gi
@@ -39,7 +39,7 @@ config:
     pvc:
       enabled: true
       size: 10Gi
-      # storageClassName: longhorn
+      # storageClassName: <your-storage-class>
       # merge or patch the pvc
       # https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#persistentvolumeclaim-v1-core
       merge: {}
