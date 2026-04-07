@@ -196,25 +196,28 @@ spec:
 
 ## Integration with NATS Helm Chart
 
-The operator is designed to work seamlessly with the official NATS Helm chart:
+The operator is designed to work seamlessly with the official NATS Helm chart.
 
-1. **Operator creates JWT Secret:**
-   - Operator JWT
-   - All account JWTs (system, myapp, etc.)
+### Deploy NATS
 
-2. **NATS Helm chart references the Secret:**
+After the operator has reconciled and `nats-auth-jwts` Secret exists:
+
+```bash
+helm repo add nats https://nats-io.github.io/k8s/helm/charts/
+helm upgrade --install nats nats/nats -f examples/nats-values.yaml
+```
+
+See [`examples/nats-values.yaml`](./examples/nats-values.yaml) for a complete working Helm values file.
+
+Key fields to configure in your values:
 
 ```yaml
-# values.yaml for NATS Helm chart
-nats:
-  jetstream:
-    enabled: true
-
 config:
-  resolver_preload: |
-    $NATS_OPERATOR_JWT: <<NATS_OPERATOR_JWT>>
-    $NATS_SYSTEM_ACCOUNT_JWT: <<NATS_SYSTEM_ACCOUNT_JWT>>
-    $NATS_MYAPP_ACCOUNT_JWT: <<NATS_MYAPP_ACCOUNT_JWT>>
+  merge:
+    operator: << $NATS_OPERATOR_JWT >>
+    system_account: "<main-system-account public key>"
+    resolver_preload:
+      "<main-system-account public key>": << $NATS_SYSTEM_ACCOUNT_JWT >>
 
 container:
   env:
@@ -227,18 +230,16 @@ container:
       valueFrom:
         secretKeyRef:
           name: nats-auth-jwts
-          key: system-account
-    NATS_MYAPP_ACCOUNT_JWT:
-      valueFrom:
-        secretKeyRef:
-          name: nats-auth-jwts
-          key: myapp-account
+          key: main-system-account  # key = <authconfig-name>-system-account
 ```
 
-3. **No conflicts:**
-   - Operator manages credentials (Secrets)
-   - NATS Helm chart manages configuration (ConfigMaps, Deployments)
-   - Each owns distinct resources
+Get the system account public key after the operator reconciles:
+
+```bash
+kubectl get natsaccount main-system-account -o jsonpath='{.status.accountId}'
+```
+
+**No conflicts:** the operator manages credentials (Secrets), the NATS Helm chart manages the server (ConfigMaps, StatefulSet). Each owns distinct resources.
 
 ## Examples
 

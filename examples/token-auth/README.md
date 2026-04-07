@@ -321,5 +321,5 @@ kubectl delete -f 01-auth-config.yaml
 ## Next Steps
 
 - Try the [JWT auth example](../jwt-auth/) for multi-tenancy
-- Review [DEPLOYMENT.md](../../DEPLOYMENT.md) for production setup
+- Review [nats-values.yaml](../nats-values.yaml) for a complete NATS Helm values reference
 - Check [README.md](../../README.md) for complete documentation
