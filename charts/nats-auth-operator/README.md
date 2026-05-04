@@ -9,15 +9,7 @@ This Helm chart deploys the NATS Auth Operator to your Kubernetes cluster. The o
 
 ## Installation
 
-### Install the CRDs
-
-First, install the Custom Resource Definitions:
-
-```bash
-kubectl apply -f https://raw.githubusercontent.com/jradikk/nats-auth-operator/main/config/crd/bases/nats.jradikk_natsauthconfigs.yaml
-kubectl apply -f https://raw.githubusercontent.com/jradikk/nats-auth-operator/main/config/crd/bases/nats.jradikk_natsaccounts.yaml
-kubectl apply -f https://raw.githubusercontent.com/jradikk/nats-auth-operator/main/config/crd/bases/nats.jradikk_natsusers.yaml
-```
+The CRDs ship with the chart (under `crds/`) and are installed automatically by Helm on first install.
 
 ### Install the Chart
 
@@ -306,12 +298,12 @@ helm upgrade nats-auth-operator oci://ghcr.io/jradikk/charts/nats-auth-operator 
 
 ### Upgrade CRDs
 
-CRDs are not automatically upgraded by Helm. Upgrade them manually:
+Helm installs CRDs from the chart's `crds/` directory only on **first install** — it does not upgrade them on subsequent `helm upgrade`. Apply CRD changes manually before upgrading the chart:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/jradikk/nats-auth-operator/main/config/crd/bases/nats.jradikk_natsauthconfigs.yaml
-kubectl apply -f https://raw.githubusercontent.com/jradikk/nats-auth-operator/main/config/crd/bases/nats.jradikk_natsaccounts.yaml
-kubectl apply -f https://raw.githubusercontent.com/jradikk/nats-auth-operator/main/config/crd/bases/nats.jradikk_natsusers.yaml
+kubectl apply -f https://raw.githubusercontent.com/jradikk/nats-auth-operator/main/charts/nats-auth-operator/crds/nats.jradikk_natsauthconfigs.yaml
+kubectl apply -f https://raw.githubusercontent.com/jradikk/nats-auth-operator/main/charts/nats-auth-operator/crds/nats.jradikk_natsaccounts.yaml
+kubectl apply -f https://raw.githubusercontent.com/jradikk/nats-auth-operator/main/charts/nats-auth-operator/crds/nats.jradikk_natsusers.yaml
 ```
 
 ## Uninstallation
