@@ -150,3 +150,14 @@ affinity: {}
 # Enable leader election for controller manager
 leaderElection:
   enabled: true
+
+# Restrict the controller to the namespace it is released into.
+#
+# Off by default, so existing installs keep watching the whole cluster. Turning it on scopes the
+# manager's cache to one namespace and renders its RBAC as a Role instead of a ClusterRole, which
+# lets several independent instances coexist - one per namespace that owns its own NATS.
+#
+# Two things stop working when this is on, both by design: cross namespace references
+# (authConfigRef or serverAuthConfig pointing outside the namespace) cannot be resolved, and the
+# instance no longer reconciles resources anywhere else.
+namespaced: false
